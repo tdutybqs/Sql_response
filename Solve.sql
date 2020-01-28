@@ -103,9 +103,8 @@ insert into zakaz (id_ag,id_tov,zakazano,prodano,date_zak) values (5,8,5,5,"2018
 
 /* 1) Создать запрос Заказы агентов, отобразив в нем ФИО агента, название и количество заказанного им товара, и дату заказа*/
 select concat(fam," ",left(name,1),".",left(otch,1)) as "ФИО", nametov "Название товара", zakazano "Заказано", date_zak "Дата заказа" 
-from 
-tovary inner join zakaz on tovary.id_tov = zakaz.id_tov 
-inner join agents on zakaz.id_ag = agents.id_ag order by fam;
+from agents a, tovary t, zakaz z 
+where a.id_ag=z.id_ag and z.id_tov = t.id_tov;
 
 -- Второй способ
 select concat(fam," ",left(name,1),".",left(otch,1)) as "ФИО", nametov "Название товара", zakazano "Заказано", date_zak "Дата заказа" 
@@ -127,12 +126,36 @@ FROM agents
 LEFT OUTER JOIN  zakaz ON zakaz.id_ag = agents.id_ag
 WHERE zakaz.id_ag is NULL order by agents.id_ag;
 
-/* 3) Создать запрос, содержащий информацию о минимальной, максимальной и средней цене на товары по каждому предприяти*/
+-- Второй способ
+SELECT fam, name, otch
+FROM agents a
+WHERE NOT EXISTS( 
+	SELECT id_ag 
+    FROM zakaz z
+	WHERE a.id_ag = z.id_ag);
+
+/* 3) Создать запрос, содержащий информацию о минимальной, максимальной и средней цене на товары по каждому предприятию*/
 select nazvp "Название предприятия", nametov "Товар", Min(cenaopt) "Минимальная цена", AVG(cenaopt) "Средняя цена", Max(cenaopt) "Максимальная цена"
 from
 predpr inner join agents on predpr.id_pr = agents.id_pr
 inner join zakaz on zakaz.id_ag = agents.id_ag
 inner join tovary on zakaz.id_tov = tovary.id_tov group by predpr.nazvp;
+
+-- Второй способ
+SELECT 
+    nazvp,
+    MIN(cenarozn) AS min,
+    AVG(cenarozn) AS avg,
+    MAX(cenarozn) AS max
+FROM
+    predpr p,
+    agents a,
+    tovary t,
+    zakaz z
+WHERE
+    p.id_pr = a.id_pr AND a.id_ag = z.id_ag
+        AND z.id_tov = t.id_tov
+GROUP BY nazvp;
 
 /* 4) Выбрать записи о продажах в Новосибирск или Одессу или в акционерные общества*/
 select nazvp "Название предъприятия", city "Город", concat(fam," ",left(name,1),".",left(otch,1)) as "ФИО" , zakazano "Заказано", nametov "Название товара", date_zak "Дата заказа"
@@ -143,9 +166,7 @@ inner join tovary on zakaz.id_tov = tovary.id_tov
 where (city = "Новосибирск" OR city = "Одесса" OR SUBSTRING(nazvp, 1, 2) = "АО") order by fam;
 
 /* 5) Создать запрос, позволяющий вычислить прибыль каждого агента по каждому из его сделанных заказов*/
--- Morozov 980
--- Il'in 1320
--- Smesov 2000
+
 select concat(fam," ",left(name,1),".",left(otch,1)) as "ФИО", nametov "Название товара", zakazano "Заказано",prodano "Продано",
 cenaopt "Оптовая цена", cenarozn "Розничная цена", date_zak "Дата заказа", prodano*tovary.cenarozn-zakaz.zakazano*tovary.cenaopt "Прибыль"
 from
@@ -153,11 +174,37 @@ zakaz left join agents on agents.id_ag = zakaz.id_ag
 left join tovary on tovary.id_tov = zakaz.id_tov 
 order by fam;
 
+-- Второй способ
+SELECT 
+   concat(fam," ",left(name,1),".",left(otch,1)) as "ФИО",
+   SUM(prodano * cenarozn - zakazano * cenaopt) AS pribl
+FROM
+    zakaz z,
+    agents a,
+    tovary t
+WHERE
+    a.id_ag = z.id_ag
+        AND z.id_tov = t.id_tov
+GROUP BY z.id_zak;
+
 /* 6) Подсчитать остатки по каждому товару как разность между суммарным количеством заказов и суммарным количеством продаж*/
 select nametov "Название товара",Count(zakaz.zakazano) as "Общее количество заказов",Count(zakaz.prodano) as "Общее количество продаж", Sum(zakaz.zakazano)-Sum(zakaz.prodano) "Остаток"
 from tovary
 inner join (agents inner join zakaz on agents.id_ag = zakaz.id_ag) on tovary.id_tov = zakaz.id_tov 
 group by tovary.id_tov;
+
+-- Второй способ
+SELECT 
+    nametov, SUM(zakazano) - SUM(prodano) AS ostatki
+FROM
+    zakaz z,
+    predpr p,
+    agents a,
+    tovary t
+WHERE
+    p.id_pr = a.id_pr AND a.id_ag = z.id_ag
+        AND z.id_tov = t.id_tov
+GROUP BY t.id_tov;
 
 /* 7) Создадим запрос, который показывает фамилию агента, у которого суммарная прибыль по всем его сделанным заказам максимальна */
 /*select concat(fam," ",left(name,1),".",left(otch,1)) as "ФИО", Sum(zakazano) "Заказано",Sum(prodano) "Продано", Sum(prodano*tovary.cenarozn-zakaz.zakazano*tovary.cenaopt) as "Прибыль"
